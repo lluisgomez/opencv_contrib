@@ -215,12 +215,12 @@ public:
             }
           }
 
-          if (best_idx >=0) // this is not necessary. Here just to visualize results
+          /*if (best_idx >=0) // this is not necessary. Here just to visualize results
           {
             cout << " " << oversegmentation[i]*step_size << "/" << vocabulary[best_idx] << " " ;
           } else {
             cout << " Err ";
-          }
+          }*/
 
           if ((i>0) && (best_idx == last_best_idx) 
               && (oversegmentation[i]*step_size < oversegmentation[i-1]*step_size + win_size) )
@@ -245,9 +245,9 @@ public:
           last_best_p   = best_p;
           i++;
         }
-        cout << endl;
+        //cout << endl;
 
-
+/*
 // this is not necessary. Here just to visualize results
         for (size_t i=0; i<recognition_probabilities.size(); )
         {
@@ -273,6 +273,7 @@ public:
         }
         cout << endl;
 // up to here!
+*/
 
 
         /*Now we go here with the beam search algorithm to optimize the recognition score*/
@@ -288,9 +289,6 @@ public:
                     recognition_probabilities[i][j] = log(recognition_probabilities[i][j]);
             }
         }
-
-
-
 
         vector< beamSearch_node > beam;
         // Here we initialize the beam with all possible character's pairs
@@ -315,14 +313,9 @@ public:
               update_beam( beam, oversegmentation, childs, recognition_probabilities);
 
             generated_chids += (int)childs.size();
-            cout << "beam size " << beam.size() << " best score " << beam[0].score<< endl;
  
           }
         }
-
-
-        //cout << endl << endl << " End with initial pairs " << endl<< endl<< endl;
-        cout << "beam size " << beam.size() << " best score " << beam[0].score << endl;
 
 
         while (generated_chids != 0)
@@ -341,7 +334,6 @@ public:
                     update_beam( beam, oversegmentation, childs, recognition_probabilities);
                 generated_chids += (int)childs.size();
             }
-            cout << "beam size " << beam.size() << " best score " << beam[0].score << endl;
         }
 
 
@@ -396,9 +388,9 @@ cout << "] ";*/
     {
         string out_sequence;
         double min_score = -DBL_MAX; //min score value to be part of the beam
-        if ((int)beam.size() == beam_size)
-            min_score = beam[beam.size()-1].score; //last element has the lowest score
-        //TODO this not guaratee beam size is not increased, we must actually clamp it to 50 elements after any insert.
+        if ((int)beam.size() >= beam_size)
+            min_score = beam[beam_size-1].score; //last element has the lowest score
+
         for (size_t i=0; i<childs.size(); i++)
         {
             double score = score_segmentation(childs[i], oversegmentation, 
