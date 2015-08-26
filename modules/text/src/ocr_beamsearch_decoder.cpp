@@ -190,8 +190,6 @@ public:
         }
 
 
-        vector< vector<double> > recognition_probabilities;
-        vector<int> oversegmentation;
 
         classifier->eval(src, recognition_probabilities, oversegmentation);
 
@@ -290,7 +288,6 @@ public:
             }
         }
 
-        vector< beamSearch_node > beam;
         // Here we initialize the beam with all possible character's pairs
         int generated_chids = 0;
         for (size_t i=0; i<recognition_probabilities.size()-1; i++)
@@ -301,16 +298,14 @@ public:
             beamSearch_node node;
             node.segmentation.push_back(i);
             node.segmentation.push_back(j);
-            node.score = score_segmentation(node.segmentation, oversegmentation,
-                                            recognition_probabilities, 
-                                            out_sequence);
-            vector< vector<int> > childs = generate_childs( node.segmentation, oversegmentation );
+            node.score = score_segmentation(node.segmentation, out_sequence);
+            vector< vector<int> > childs = generate_childs( node.segmentation );
             node.expanded = true;
             
             beam.push_back( node );
         
             if (!childs.empty())
-              update_beam( beam, oversegmentation, childs, recognition_probabilities);
+              update_beam( childs );
 
             generated_chids += (int)childs.size();
  
@@ -327,40 +322,36 @@ public:
                 vector< vector<int> > childs;
                 if (!beam[i].expanded)
                 {
-                  childs = generate_childs(beam[i].segmentation, oversegmentation);
+                  childs = generate_childs( beam[i].segmentation );
                   beam[i].expanded = true;
                 }
                 if (!childs.empty())
-                    update_beam( beam, oversegmentation, childs, recognition_probabilities);
+                    update_beam( childs );
                 generated_chids += (int)childs.size();
             }
         }
 
-
         // FINISHED ! Get the best prediction found into out_sequence
-        score_segmentation(beam[0].segmentation, oversegmentation, 
-                           recognition_probabilities, out_sequence);
+        double lp = score_segmentation( beam[0].segmentation, out_sequence );
 
-
-        // TODO fill other output parameters
+        // fill other output parameters 
+        component_rects->push_back(Rect(0,0,src.cols,src.rows));
+        component_texts->push_back(out_sequence);
+        component_confidences->push_back((float)exp(lp));
 
         return;
     }
 
 private:
-
     int win_size;
     int step_size;
 
-    ////////////////////////////////////////////////////////////
+    vector< beamSearch_node > beam;
+    vector< vector<double> > recognition_probabilities;
+    vector<int> oversegmentation;
 
-    vector< vector<int> > generate_childs(vector<int> &segmentation, vector<int> &oversegmentation)
+    vector< vector<int> > generate_childs( vector<int> &segmentation )
     {
-
-/*cout << " generate childs  for [";
-for (size_t i = 0 ; i < segmentation .size(); i++)
-cout << segmentation[i] << ",";
-cout << "] ";*/
 
         vector< vector<int> > childs;
         for (size_t i=segmentation[segmentation.size()-1]+1; i<oversegmentation.size(); i++)
@@ -368,23 +359,15 @@ cout << "] ";*/
             int seg_point = i;
             if (find(segmentation.begin(), segmentation.end(), seg_point) == segmentation.end())
             {
-                //cout << seg_point << " " ;
                 vector<int> child = segmentation;
                 child.push_back(seg_point);
-                //sort(child.begin(), child.end());
                 childs.push_back(child);
             }
         }
-        //cout << endl;
         return childs;
     }
 
-
-    ////////////////////////////////////////////////////////////
-
-    //TODO shall the beam itself be a member of the class? yes
-    //     shall oversegmentation? yes
-    void update_beam (vector< beamSearch_node > &beam, vector<int> &oversegmentation, vector< vector<int> > &childs, vector< vector<double> > &recognition_probabilities)
+    void update_beam ( vector< vector<int> > &childs )
     {
         string out_sequence;
         double min_score = -DBL_MAX; //min score value to be part of the beam
@@ -393,8 +376,7 @@ cout << "] ";*/
 
         for (size_t i=0; i<childs.size(); i++)
         {
-            double score = score_segmentation(childs[i], oversegmentation, 
-                                              recognition_probabilities, out_sequence);
+            double score = score_segmentation(childs[i], out_sequence);
             if (score > min_score)
             {
                 beamSearch_node node;
@@ -413,7 +395,7 @@ cout << "] ";*/
     }
 
 
-    double score_segmentation(vector<int> &segmentation, vector<int> &oversegmentation, vector<vector<double> > &observations, string& outstring)
+    double score_segmentation( vector<int> &segmentation, string& outstring )
     {
 
         //cout << " start score segmentation : ";
@@ -460,7 +442,7 @@ cout << "] ";*/
         // Initialize base cases (t == 0)
         for (int i=0; i<(int)vocabulary.size(); i++)
         {
-            V.at<double>(0,i) = start_p[i] + observations[segmentation[0]][i];
+            V.at<double>(0,i) = start_p[i] + recognition_probabilities[segmentation[0]][i];
             path[i] = vocabulary.at(i);
         }
 
@@ -477,7 +459,7 @@ cout << "] ";*/
                 int best_idx = 0;
                 for (int j=0; j<(int)vocabulary.size(); j++)
                 {
-                    double prob = V.at<double>(t-1,j) + transition_p.at<double>(j,i) + observations[segmentation[t]][i];
+                    double prob = V.at<double>(t-1,j) + transition_p.at<double>(j,i) + recognition_probabilities[segmentation[t]][i];
                     if ( prob > max_prob)
                     {
                         max_prob = prob;
@@ -546,7 +528,6 @@ protected:
 private:
     int window_size; // window size
     int step_size;   // sliding window step
-    //TODO implement getters/setters for some of these members (if apply)
     int nr_class;    // number of classes
     int nr_feature;  // number of features
     Mat feature_min; // scale range
@@ -576,7 +557,6 @@ OCRBeamSearchClassifierCNN::OCRBeamSearchClassifierCNN (const string& filename)
         fs["feature_min"] >> feature_min;
         fs["feature_max"] >> feature_max;
         fs.release();
-        // TODO check all matrix dimensions match correctly and no one is empty
     }
     else
         CV_Error(Error::StsBadArg, "Default classifier data file not found!");
