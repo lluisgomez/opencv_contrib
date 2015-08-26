@@ -76,6 +76,7 @@ void OCRBeamSearchDecoder::run(Mat& image, Mat& mask, string& output_text, vecto
                                vector<string>* component_texts, vector<float>* component_confidences,
                                int component_level)
 {
+    CV_Assert(mask.type() == CV_8UC1);
     CV_Assert( (image.type() == CV_8UC1) || (image.type() == CV_8UC3) );
     CV_Assert( (component_level == OCR_LEVEL_TEXTLINE) || (component_level == OCR_LEVEL_WORD) );
     output_text.clear();
@@ -154,6 +155,7 @@ public:
               vector<float>* component_confidences,
               int component_level)
     {
+        CV_Assert(mask.type() == CV_8UC1);
         //nothing to do with a mask here
         run( src, out_sequence, component_rects, component_texts, component_confidences, 
              component_level);
@@ -178,7 +180,7 @@ public:
         if (component_confidences != NULL)
             component_confidences->clear();
 
-        // TODO split a line into words
+        // TODO (if necessary) split a line into words
 
         if(src.type() == CV_8UC3)
         {
@@ -199,11 +201,11 @@ public:
         //NMS of recognitions
         double last_best_p = 0;
         int last_best_idx  = -1;
-        for (int i=0; i<recognition_probabilities.size(); )
+        for (size_t i=0; i<recognition_probabilities.size(); )
         {
           double best_p = 0;
           int best_idx = -1;
-          for (int j=0; j<recognition_probabilities[i].size(); j++)
+          for (size_t j=0; j<recognition_probabilities[i].size(); j++)
           {
             if (recognition_probabilities[i][j] > best_p)
             {
@@ -246,11 +248,11 @@ public:
 
 
 // this is not necessary. Here just to visualize results
-        for (int i=0; i<recognition_probabilities.size(); )
+        for (size_t i=0; i<recognition_probabilities.size(); )
         {
           double best_p = 0;
           int best_idx = -1;
-          for (int j=0; j<recognition_probabilities[i].size(); j++)
+          for (size_t j=0; j<recognition_probabilities[i].size(); j++)
           {
             if (recognition_probabilities[i][j] > best_p)
             {
@@ -292,9 +294,9 @@ public:
         vector< beamSearch_node > beam;
         // Here we initialize the beam with all possible character's pairs
         int generated_chids = 0;
-        for (int i=0; i<recognition_probabilities.size()-1; i++)
+        for (size_t i=0; i<recognition_probabilities.size()-1; i++)
         {
-          for (int j=i+1; j<recognition_probabilities.size(); j++)
+          for (size_t j=i+1; j<recognition_probabilities.size(); j++)
           {
 
             beamSearch_node node;
@@ -312,14 +314,14 @@ public:
               update_beam( beam, oversegmentation, childs, recognition_probabilities);
 
             generated_chids += (int)childs.size();
-            //cout << "beam size " << beam.size() << " best score " << beam[0].score<< endl;
+            cout << "beam size " << beam.size() << " best score " << beam[0].score<< endl;
  
           }
         }
 
 
         //cout << endl << endl << " End with initial pairs " << endl<< endl<< endl;
-        //cout << "beam size " << beam.size() << " best score " << beam[0].score << endl;
+        cout << "beam size " << beam.size() << " best score " << beam[0].score << endl;
 
 
         while (generated_chids != 0)
@@ -338,7 +340,7 @@ public:
                     update_beam( beam, oversegmentation, childs, recognition_probabilities);
                 generated_chids += (int)childs.size();
             }
-            //cout << "beam size " << beam.size() << " best score " << beam[0].score << endl;
+            cout << "beam size " << beam.size() << " best score " << beam[0].score << endl;
         }
 
 
@@ -355,9 +357,6 @@ public:
 private:
 
     ////////////////////////////////////////////////////////////
-
-    // TODO the way we expand nodes makes the recognition score heuristic not monotonic
-    // it should start from left node 0 and grow always to the right.
 
     vector< vector<int> > generate_childs(vector<int> &segmentation, vector<int> &oversegmentation)
     {
@@ -387,8 +386,8 @@ cout << "] ";*/
 
     ////////////////////////////////////////////////////////////
 
-    //TODO shall the beam itself be a member of the class?
-    //     shall oversegmentation?
+    //TODO shall the beam itself be a member of the class? yes
+    //     shall oversegmentation? yes
     void update_beam (vector< beamSearch_node > &beam, vector<int> &oversegmentation, vector< vector<int> > &childs, vector< vector<double> > &recognition_probabilities)
     {
         string out_sequence;
@@ -410,7 +409,7 @@ cout << "] ";*/
                 sort(beam.begin(),beam.end(),beam_sort_function);
                 if ((int)beam.size() > beam_size)
                 {
-                    beam.pop_back();
+                    beam.erase(beam.begin()+beam_size,beam.end());
                     min_score = beam[beam.size()-1].score;
                 }
             }
@@ -439,7 +438,7 @@ cout << "] ";*/
         int win_size  = 32; //TODO this must be memeber of the class (not hardcoded)
 
         Mat interdist (segmentation.size()-1, 1, CV_32F, 1);
-        for (int i=0; i<segmentation.size()-1; i++)
+        for (size_t i=0; i<segmentation.size()-1; i++)
         {
           interdist.at<float>(i,0) = oversegmentation[segmentation[i+1]]*step_size - 
                                      oversegmentation[segmentation[i]]*step_size;
@@ -456,7 +455,7 @@ cout << "] ";*/
         }
         Scalar m, std;
         meanStdDev(interdist, m, std);
-        float interdist_std = std[0];
+        //double interdist_std = std[0];
 
 
         /*Mat overlaps (segmentation.size()+1, 1, CV_32F, 1); //we are going to penalize large variations in overlap
