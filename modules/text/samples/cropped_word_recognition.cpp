@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
     }
 
     string vocabulary = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; // must have the same order as the clasifier output classes
-    vector<string> lexicon;  // a list of words expected to be found on the input image
+    /*vector<string> lexicon;  // a list of words expected to be found on the input image
     lexicon.push_back(string("abb"));
     lexicon.push_back(string("patata"));
     lexicon.push_back(string("CHINA"));
@@ -49,15 +49,15 @@ int main(int argc, char* argv[])
 
     // Create tailored language model a small given lexicon
     Mat transition_p;
-    createOCRHMMTransitionsTable(vocabulary,lexicon,transition_p);
+    createOCRHMMTransitionsTable(vocabulary,lexicon,transition_p);*/
 
     // An alternative would be to load the default generic language model
     //    (created from ispell 42869 english words list)
-    /*Mat transition_p;
-    string filename = "OCRHMM_transitions_table.xml"; // TODO use same order for voc
+    Mat transition_p;
+    string filename = "OCRHMM_transitions_table.xml"; 
     FileStorage fs(filename, FileStorage::READ);
     fs["transition_probabilities"] >> transition_p;
-    fs.release();*/
+    fs.release();
 
     Mat emission_p = Mat::eye(62,62,CV_64FC1);
 
