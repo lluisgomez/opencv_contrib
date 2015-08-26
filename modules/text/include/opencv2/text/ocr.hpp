@@ -338,6 +338,9 @@ public:
         including 0 as start-sequence location.
          */
         virtual void eval( InputArray image, std::vector< std::vector<double> >& recognition_probabilities, std::vector<int>& oversegmentation );
+
+        int getWindowSize() {return 0;}
+        int getStepSize() {return 0;}
     };
 
 public:

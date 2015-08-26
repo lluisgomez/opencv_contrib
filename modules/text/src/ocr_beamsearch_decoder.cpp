@@ -126,6 +126,8 @@ public:
                               int _beam_size)
     {
         classifier = _classifier;
+        step_size = classifier->getStepSize();
+        win_size  = classifier->getWindowSize();
         emission_p = emission_probabilities_table.getMat();
         vocabulary = _vocabulary;
         mode = _mode;
@@ -193,10 +195,9 @@ public:
 
         classifier->eval(src, recognition_probabilities, oversegmentation);
 
-        // TODO if the num of oversegmentation elements is < 2 we can not do nothing!!
+        // if the number of oversegmentation points is less than 2 we can not do nothing!!
+        if (oversegmentation.size() < 2) return;
 
-        int step_size = 4;  // TODO make it member of the class
-        int win_size  = 32; // TODO make it member of the class
 
         //NMS of recognitions
         double last_best_p = 0;
@@ -356,6 +357,9 @@ public:
 
 private:
 
+    int win_size;
+    int step_size;
+
     ////////////////////////////////////////////////////////////
 
     vector< vector<int> > generate_childs(vector<int> &segmentation, vector<int> &oversegmentation)
@@ -417,11 +421,6 @@ cout << "] ";*/
     }
 
 
-    ////////////////////////////////////////////////////////////
-    // TODO Add heuristics to the score function (see PhotoOCR paper)
-    // e.g.: in some cases we discard a segmentation because it includes a very large character
-    //       in other cases we do it because the overlapping between two chars is too large
-    //       etc.
     double score_segmentation(vector<int> &segmentation, vector<int> &oversegmentation, vector<vector<double> > &observations, string& outstring)
     {
 
@@ -434,8 +433,7 @@ cout << "] ";*/
         // No need to use Viterbi to know a given segmentation is bad
         // e.g.: in some cases we discard a segmentation because it includes a very large character
         //       in other cases we do it because the overlapping between two chars is too large
-        int step_size = 4;  //TODO this must be memeber of the class (not hardcoded)
-        int win_size  = 32; //TODO this must be memeber of the class (not hardcoded)
+        // TODO  Add more heuristics (e.g. penalize large inter-character variance)
 
         Mat interdist (segmentation.size()-1, 1, CV_32F, 1);
         for (size_t i=0; i<segmentation.size()-1; i++)
@@ -457,37 +455,7 @@ cout << "] ";*/
         meanStdDev(interdist, m, std);
         //double interdist_std = std[0];
 
-
-        /*Mat overlaps (segmentation.size()+1, 1, CV_32F, 1); //we are going to penalize large variations in overlap
-
-        for (int i=-1; i<segmentation.size(); i++)
-        {
-           int pairoverlap = 0;
-           if (i == -1)
-             pairoverlap = 0;
-           else if (i == segmentation.size()-1)
-             pairoverlap = 0;
-           else
-             pairoverlap = (segmentation[i]*step_size) + win_size - (segmentation[i+1]*step_size);
-
-           overlaps.at<float>(i+1,0) = pairoverlap;
-
-           if (pairoverlap > win_size/1.5) // TODO this float value is a param?
-           {
-             //cout << " score = 0  word = \"\"" << endl;
-             cout << "  rejected by overlap! " << endl;
-             return -DBL_MAX;
-           }
-        }
-
-        Scalar m, std;
-        meanStdDev(overlaps, m, std);
-        float overlap_variance = std[0];
-        if (segmentation.size() < 4)
-           overlap_variance = 8;*/
-
-
-        //TODO This must be extracted from dictionary
+        //TODO This must be extracted from lexicon (if we have it)
         vector<double> start_p(vocabulary.size());
         for (int i=0; i<(int)vocabulary.size(); i++)
             start_p[i] = log(1.0/vocabulary.size());
@@ -575,21 +543,25 @@ public:
 
     void eval( InputArray src, vector< vector<double> >& recognition_probabilities, vector<int>& oversegmentation );
 
+    int getWindowSize() {return window_size;}
+    int getStepSize() {return step_size;}
+    void setStepSize(int _step_size) {step_size = _step_size;}
+
 protected:
     void normalizeAndZCA(Mat& patches);
     double eval_feature(Mat& feature, double* prob_estimates);
 
 private:
+    int window_size; // window size
+    int step_size;   // sliding window step
     //TODO implement getters/setters for some of these members (if apply)
-    int nr_class;		 // number of classes
+    int nr_class;    // number of classes
     int nr_feature;  // number of features
     Mat feature_min; // scale range
     Mat feature_max;
     Mat weights;     // Logistic Regression weights
     Mat kernels;     // CNN kernels
     Mat M, P;        // ZCA Whitening parameters
-    int step_size;   // sliding window step
-    int window_size; // window size
     int quad_size;
     int patch_size;
     int num_quads;   // extract 25 quads (12x12) from each image
@@ -619,16 +591,13 @@ OCRBeamSearchClassifierCNN::OCRBeamSearchClassifierCNN (const string& filename)
 
     nr_feature = weights.rows;
     nr_class   = weights.cols;
-    // TODO some of this can be inferred from the input file (e.g. patch size must be sqrt(filters.cols))
+    patch_size  = sqrt(kernels.cols);
+    window_size = 4*patch_size;
     step_size   = 4;
-    window_size = 32;
     quad_size   = 12;
-    patch_size  = 8;
     num_quads   = 25;
     num_tiles   = 25;
-    alpha       = 0.5;
-
-
+    alpha       = 0.5; // used in non-linear activation function z = max(0, |D*a| - alpha)
 }
 
 void OCRBeamSearchClassifierCNN::eval( InputArray _src, vector< vector<double> >& recognition_probabilities, vector<int>& oversegmentation)
@@ -650,7 +619,6 @@ void OCRBeamSearchClassifierCNN::eval( InputArray _src, vector< vector<double> >
         cvtColor(src,src,COLOR_RGB2GRAY);
     }
 
-    // TODO shall we resize the input image or make a copy ?
     resize(src,src,Size(window_size*src.cols/src.rows,window_size));
 
     int seg_points = 0;
@@ -745,8 +713,8 @@ void OCRBeamSearchClassifierCNN::eval( InputArray _src, vector< vector<double> >
         double *p = new double[nr_class];
         double predict_label = eval_feature(feature,p);
         //cout << " Prediction: " << vocabulary[predict_label] << " with probability " << p[0] << endl;
-        if (predict_label < 0) // TODO use cvError
-            cout << "OCRBeamSearchClassifierCNN::eval Error: unexpected prediction in eval_feature()" << endl;
+        if ( (predict_label < 0) || (predict_label > nr_class) )
+            CV_Error(Error::StsOutOfRange, "OCRBeamSearchClassifierCNN::eval Error: unexpected prediction in eval_feature()");
 
 
         vector<double> recognition_p(p, p+nr_class);
